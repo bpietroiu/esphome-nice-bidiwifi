@@ -84,6 +84,27 @@ esptool.py --port COMx --baud 921600 write_flash 0x0 bidiwifi-factory-backup.bin
 
 After the first flash, subsequent updates can be done via OTA (wireless).
 
+> **Important — flash the compiled firmware, not "Prepare for first use".**
+> If you use [web.esphome.io](https://web.esphome.io/), its **"Prepare for first use"** option installs the generic `esphome-web` firmware, which does **not** contain the `nice_bidiwifi` component. You must compile this project's YAML and flash the resulting binary:
+> ```bash
+> esphome compile nice-bidiwifi-gate.yaml      # produces .esphome/build/.../firmware.factory.bin
+> esphome run nice-bidiwifi-gate.yaml --device COMx
+> ```
+> Or upload the compiled `firmware.factory.bin` manually via web.esphome.io.
+
+### First Boot & WiFi
+
+On first boot the module tries to join the WiFi defined in your YAML. If it can't (no credentials, wrong password, weak signal), it falls back to a **fallback Access Point** so you can still reach it:
+
+- **AP SSID:** the device `name` from your YAML (default `nice-bidiwifi`)
+- **AP password:** the `ap.password` you set under `wifi:`
+- Connect a phone/laptop to that AP — the **captive portal** opens automatically so you can enter your WiFi credentials.
+- **LED3** indicates WiFi state: slow blink while connecting, **solid** once connected, **fast blink** while the fallback AP is active.
+
+If you see **neither** your normal WiFi connection **nor** the fallback AP, the firmware is most likely not running or the board is browning out — see [Troubleshooting](#troubleshooting).
+
+> **Powering for first boot:** A USB-UART adapter's 3.3V pin usually **cannot** supply the current spikes the ESP32 draws when WiFi turns on, causing a brownout reset (no WiFi, no AP). Power the module from a proper 3.3V supply or the Nice board for first boot; use the UART adapter only for TX/RX/GND and reading logs.
+
 ### LED Indicators
 
 **LED1 (Bicolor) — Gate Status:**
@@ -101,12 +122,14 @@ After the first flash, subsequent updates can be done via OTA (wireless).
 | Yellow (flash) | Bus activity (TX/RX) |
 | Red | No device found |
 
-**LED3 — Status:**
+**LED3 — WiFi / Status:**
 | Pattern | Meaning |
 |---------|---------|
-| Solid | Fully operational |
-| Slow blink | Initializing |
-| Fast blink | Searching for device |
+| Solid | Connected to WiFi, fully operational |
+| Slow blink | Booting / connecting to WiFi |
+| Fast blink | Not connected — fallback AP active (or searching) |
+
+> If LED3 never lights at all after a reset, the firmware is not running (wrong image flashed) or the board is browning out — see [Troubleshooting](#troubleshooting).
 
 ## Software Setup
 
@@ -336,6 +359,46 @@ This implementation is a **clean-room rewrite** — no code was copied from the 
 - Nice DMBM Integration Protocol documentation
 - MyNicePro APK reverse engineering (protocol layer analysis)
 - Live packet analysis on MC800 hardware
+
+## Troubleshooting
+
+### Module won't connect to WiFi and shows no fallback AP
+
+This almost always comes down to one of three things:
+
+1. **Wrong firmware flashed.** If you used web.esphome.io's "Prepare for first use", you flashed the generic `esphome-web` image, not this component. Compile and flash `nice-bidiwifi-gate.yaml` (see [First Boot & WiFi](#first-boot--wifi)).
+2. **Brownout from UART-only power.** The 3.3V pin of a USB-UART adapter often can't supply the ESP32's WiFi current spikes. Power from a proper 3.3V supply or the Nice board. A brownout produces "no WiFi *and* no AP" on every power source.
+3. **No `ap:` block in your config.** The fallback AP only appears if `wifi:` → `ap:` (and ideally `captive_portal:`) are present in the YAML you flashed.
+
+### How to verify the firmware is actually running
+
+Read the serial logs at boot — this is the fastest way to diagnose:
+
+```bash
+esphome logs nice-bidiwifi-gate.yaml          # or use the Logs console in web.esphome.io
+```
+
+Press reset (EN) and watch for:
+- The ESPHome boot banner and version
+- `wifi: Starting scan...` / connection attempts (or `Starting fallback AP`)
+- Any `Brownout detector was triggered` or boot-loop messages
+
+If you get **no serial output at all**, the wrong image is flashed or the board has no stable power. If you see repeated `Brownout detector was triggered`, fix the power supply (see above).
+
+### Check the LEDs
+
+| LED3 at boot | Likely state |
+|--------------|--------------|
+| Solid | Connected to WiFi — check your router/Home Assistant for the device |
+| Slow blink | Still trying to connect — wait, then look for the fallback AP |
+| Fast blink | Fallback AP active — connect to it and set WiFi credentials |
+| Off / nothing | Firmware not running or brownout — see above |
+
+### No communication with the gate (WiFi works, but no status)
+
+- Confirm the module is seated in the **IBT4N** connector and the controller is powered.
+- Check **LED2** — red means no device found on the bus; green means the controller was discovered.
+- Enable `logger: level: DEBUG` and watch for T4 bus packets in the logs.
 
 ## License
 
