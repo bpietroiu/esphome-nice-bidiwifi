@@ -324,6 +324,49 @@ nice_bidiwifi:
   led3_pin: 22             # LED3 (default: 22)
 ```
 
+## Apple HomeKit (optional)
+
+The gate can be exposed **directly to Apple HomeKit** as a native **Garage Door Opener** accessory — no Home Assistant or HomeKit Bridge required. This uses [HAP-ESPHome](https://github.com/bpietroiu/HAP-ESPHome) (a fork of [rednblkx/HAP-ESPHome](https://github.com/rednblkx/HAP-ESPHome) with Garage Door Opener support added on the `feature/cover-garage-door` branch).
+
+See [`nice-bidiwifi-gate-homekit.yaml`](nice-bidiwifi-gate-homekit.yaml) for a complete example. The relevant additions:
+
+```yaml
+external_components:
+  - source: components
+  - source: github://bpietroiu/HAP-ESPHome@feature/cover-garage-door
+    components: [homekit, homekit_base]
+
+cover:
+  - platform: nice_bidiwifi
+    id: gate_cover
+    name: "Gate"
+    device_class: gate
+
+homekit_base:
+  setup_code: '159-35-728'   # change this! format: XXX-XX-XXX
+
+homekit:
+  cover:
+    - id: gate_cover
+```
+
+### Pairing
+
+1. Flash and let the device connect to WiFi.
+2. Home app → **Add Accessory** → **More options…** — the bridge is discovered via mDNS.
+3. Select it and enter the `setup_code`.
+
+You get the garage door tile in the Home app and CarPlay, Siri control ("open the gate"), open/close notifications, and HomeKit automations. A HomePod or Apple TV is required as a home hub for remote (away-from-home) access.
+
+### Notes & limitations
+
+- **HomeKit garage doors are binary** (open/close only) — no partial-open or stop from the Home app. The partial-open buttons remain available in Home Assistant / the web UI.
+- **Remote opening asks for confirmation** on your device; automations that open the gate require explicit user confirmation — Apple security policy for garage-class accessories.
+- **mDNS must stay enabled** (it is by default) — HomeKit discovery piggybacks on ESPHome's mDNS responder.
+- The HAP HTTP server uses port **32042**, so it coexists with the `web_server` on port 80. Adds roughly 60 KB flash and 15 KB RAM.
+- This is an uncertified (non-MFi) accessory — it works with the Home app but is not "Works with Apple Home" certified.
+- HAP-ESPHome and its underlying [esp-homekit-sdk](https://github.com/rednblkx/esp-homekit-sdk) are **GPL-3.0 / Espressif-MIT licensed** and are pulled at build time as separate projects; none of their code is included in this MIT-licensed repository.
+
 ## T4 Bus Protocol
 
 The Nice T4 bus protocol operates at 19200 baud 8N1 with UART break signaling:
