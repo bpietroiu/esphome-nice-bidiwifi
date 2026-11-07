@@ -88,8 +88,10 @@ void NiceBidiWiFi::loop() {
 
   // 8. Time-based position estimation during movement (fallback when encoder unavailable)
   if (this->device_found_ && this->init_complete_ &&
-      (this->operation_state_ == STA_OPENING || this->operation_state_ == STA_CLOSING)) {
+      (this->operation_state_ == STA_OPENING || this->operation_state_ == STA_CLOSING) &&
+      (now - this->last_position_estimate_time_ >= T4_POSITION_ESTIMATE_MS)) {
     this->estimate_time_based_position_();
+    this->last_position_estimate_time_ = now;
   }
 
   // 9. Update status LEDs (~20Hz for smooth blink patterns)
@@ -272,40 +274,45 @@ void NiceBidiWiFi::confirm_position_from_io_(uint8_t io_byte) {
   this->awaiting_confirmation_ = false;
 }
 
-void NiceBidiWiFi::handle_movement_transition_(uint8_t old_state, uint8_t new_state) {
+// live: the change came from the controller as it happened, not from the periodic status poll
+void NiceBidiWiFi::handle_movement_transition_(uint8_t old_state, uint8_t new_state, bool live) {
   uint32_t now_ms = millis();
+
+  // Without a position register the ends are the status
+  if (this->position_unsupported_) {
+    if (new_state == STA_OPENED) {
+      this->pos_current_ = this->pos_open_;
+    } else if (new_state == STA_CLOSED) {
+      this->pos_current_ = this->pos_close_;
+    }
+  }
 
   // Track movement start
   if ((new_state == STA_OPENING || new_state == STA_CLOSING) &&
       old_state != STA_OPENING && old_state != STA_CLOSING) {
     this->movement_start_time_ = now_ms;
     this->position_at_movement_start_ = this->get_position_percent();
+    this->state_before_movement_ = old_state;
   }
 
-  // Learn duration when movement completes fully
+  // Learn the duration of a full travel, from one end to the other; a poll may be seconds late
   if ((old_state == STA_OPENING || old_state == STA_CLOSING) &&
       new_state != STA_OPENING && new_state != STA_CLOSING &&
       this->movement_start_time_ > 0) {
     uint32_t duration = now_ms - this->movement_start_time_;
 
-    if (duration >= T4_MIN_LEARNED_DURATION && duration <= T4_MAX_LEARNED_DURATION) {
-      if (old_state == STA_OPENING && new_state == STA_OPENED) {
-        // Check deviation from existing value
-        if (this->last_open_duration_ms_ == 0 ||
-            std::abs(static_cast<float>(duration) - static_cast<float>(this->last_open_duration_ms_)) /
-            static_cast<float>(this->last_open_duration_ms_) <= T4_LEARNING_DEVIATION + 0.5f) {
-          this->last_open_duration_ms_ = duration;
-          ESP_LOGI(TAG, "Learned open duration: %u ms", duration);
-          this->save_learned_timings_();
-        }
-      } else if (old_state == STA_CLOSING && new_state == STA_CLOSED) {
-        if (this->last_close_duration_ms_ == 0 ||
-            std::abs(static_cast<float>(duration) - static_cast<float>(this->last_close_duration_ms_)) /
-            static_cast<float>(this->last_close_duration_ms_) <= T4_LEARNING_DEVIATION + 0.5f) {
-          this->last_close_duration_ms_ = duration;
-          ESP_LOGI(TAG, "Learned close duration: %u ms", duration);
-          this->save_learned_timings_();
-        }
+    if (!live) {
+      ESP_LOGD(TAG, "End of travel seen by the status poll, duration not learned");
+    } else if (duration >= T4_MIN_LEARNED_DURATION && duration <= T4_MAX_LEARNED_DURATION) {
+      if (old_state == STA_OPENING && new_state == STA_OPENED && this->state_before_movement_ == STA_CLOSED) {
+        this->last_open_duration_ms_ = duration;
+        ESP_LOGI(TAG, "Learned open duration: %u ms", duration);
+        this->save_learned_timings_();
+      } else if (old_state == STA_CLOSING && new_state == STA_CLOSED &&
+                 (this->state_before_movement_ == STA_OPENED || this->state_before_movement_ == STA_PAUSE)) {
+        this->last_close_duration_ms_ = duration;
+        ESP_LOGI(TAG, "Learned close duration: %u ms", duration);
+        this->save_learned_timings_();
       }
     }
     this->movement_start_time_ = 0;
@@ -343,19 +350,20 @@ void NiceBidiWiFi::estimate_time_based_position_() {
     return;  // No learned timing available
   }
 
+  // The learned duration is a full travel, so the gate covers elapsed / duration of the way wherever it started
   float elapsed = static_cast<float>(now - this->movement_start_time_);
-  float progress = elapsed / static_cast<float>(duration_ms);
-  if (progress > 1.0f) progress = 1.0f;
+  float travelled = elapsed / static_cast<float>(duration_ms);
 
   float estimated_pos;
   if (this->operation_state_ == STA_OPENING) {
-    estimated_pos = this->position_at_movement_start_ + progress * (1.0f - this->position_at_movement_start_);
+    estimated_pos = this->position_at_movement_start_ + travelled;
   } else {
-    estimated_pos = this->position_at_movement_start_ - progress * this->position_at_movement_start_;
+    estimated_pos = this->position_at_movement_start_ - travelled;
   }
 
   if (estimated_pos < 0.0f) estimated_pos = 0.0f;
   if (estimated_pos > 1.0f) estimated_pos = 1.0f;
+  this->pos_current_ = this->pos_close_ + static_cast<uint16_t>(estimated_pos * (this->pos_open_ - this->pos_close_));
 
   // Publish estimated position to sensors
   if (this->position_sensor_ != nullptr)
@@ -505,7 +513,7 @@ void NiceBidiWiFi::parse_evt_packet_(const std::vector<uint8_t> &d) {
           this->operation_state_ = d[14];
           if (old_state != this->operation_state_) {
             ESP_LOGI(TAG, "Status: %s (0x%02X)", t4_auto_status_name(this->operation_state_), this->operation_state_);
-            this->handle_movement_transition_(old_state, this->operation_state_);
+            this->handle_movement_transition_(old_state, this->operation_state_, false);
             this->notify_state_change_();
           }
         }

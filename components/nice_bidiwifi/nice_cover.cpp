@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "nice_cover.h"
 #include "esphome/core/log.h"
 
@@ -85,6 +86,17 @@ void NiceCover::on_state_change_() {
   // Clamp near-zero to fully closed
   if (pos < CLOSED_THRESHOLD) {
     pos = cover::COVER_CLOSED;
+  }
+
+  // No position register and no learned durations: a stop part-way is open
+  if (this->hub_->position_unsupported() && state == STA_STOPPED &&
+      (pos <= cover::COVER_CLOSED || pos >= cover::COVER_OPEN)) {
+    pos = 0.5f;
+  }
+
+  // A moving gate is never at an end, so both directions stay available
+  if (op == cover::COVER_OPERATION_OPENING || op == cover::COVER_OPERATION_CLOSING) {
+    pos = std::max(0.01f, std::min(0.99f, pos));
   }
 
   if (pos != this->last_published_pos_) {

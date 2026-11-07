@@ -15,6 +15,7 @@ static const uint32_t T4_TX_INTERVAL_MS = 100;
 static const uint32_t T4_REPLY_TIMEOUT_MS = 500;
 static const uint32_t T4_DISCOVERY_INTERVAL_MS = 10000;
 static const uint32_t T4_POSITION_POLL_MS = 500;
+static const uint32_t T4_POSITION_ESTIMATE_MS = 250;  // time-based position updates while moving
 static const uint32_t T4_STATUS_REFRESH_MS = 15000;
 static const uint32_t T4_IO_POLL_MS = 5000;
 
@@ -25,7 +26,6 @@ static const uint8_t T4_DISCOVERY_BACKOFF_COUNT = 5;
 // Learned timing bounds
 static const uint32_t T4_MIN_LEARNED_DURATION = 3000;    // 3 seconds
 static const uint32_t T4_MAX_LEARNED_DURATION = 300000;  // 5 minutes
-static const float T4_LEARNING_DEVIATION = 0.10f;        // 10% threshold
 
 // Protocol types
 enum T4Protocol : uint8_t {

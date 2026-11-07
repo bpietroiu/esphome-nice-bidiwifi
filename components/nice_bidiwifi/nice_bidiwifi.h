@@ -172,9 +172,11 @@ class NiceBidiWiFi : public Component {
   // Time-based position estimation
   uint32_t movement_start_time_{0};
   float position_at_movement_start_{0.0f};
+  uint8_t state_before_movement_{STA_STOPPED};
   uint32_t last_open_duration_ms_{0};
   uint32_t last_close_duration_ms_{0};
   uint32_t last_encoder_update_time_{0};
+  uint32_t last_position_estimate_time_{0};
 
   // Status confirmation
   bool awaiting_confirmation_{false};
@@ -255,7 +257,7 @@ class NiceBidiWiFi : public Component {
   void estimate_time_based_position_();
   void save_learned_timings_();
   void load_learned_timings_();
-  void handle_movement_transition_(uint8_t old_state, uint8_t new_state);
+  void handle_movement_transition_(uint8_t old_state, uint8_t new_state, bool live = true);
   void confirm_position_from_io_(uint8_t io_byte);
   void parse_packet_(const T4RxPacket &packet);
   void parse_evt_packet_(const std::vector<uint8_t> &data);
