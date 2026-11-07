@@ -44,6 +44,14 @@ void NiceBidiWiFi::loop() {
     }
   }
 
+  // Bytes that fit no packet: a packet lost its start, so ask for the status now
+  if (this->bus_.take_junk_bytes() > 0 && this->device_found_ && this->init_complete_ &&
+      now - this->junk_refresh_time_ >= T4_JUNK_REFRESH_MS) {
+    ESP_LOGD(TAG, "Garbled packet on the bus, refreshing the status");
+    this->junk_refresh_time_ = now;
+    this->request_status_confirmation_();
+  }
+
   // 2. Process TX queue
   if (this->bus_.ready_to_send() && !this->tx_queue_.empty()) {
     this->bus_.send(this->tx_queue_.front());
@@ -65,7 +73,7 @@ void NiceBidiWiFi::loop() {
   }
 
   // 5. Position polling during movement (skip for Robus — breaks if polled while moving)
-  if (this->device_found_ && this->init_complete_ && !this->is_robus_ &&
+  if (this->device_found_ && this->init_complete_ && !this->is_robus_ && !this->position_unsupported_ &&
       (this->operation_state_ == STA_OPENING || this->operation_state_ == STA_CLOSING) &&
       (now - this->last_position_poll_time_ >= T4_POSITION_POLL_MS)) {
     this->request_position_();
@@ -88,8 +96,10 @@ void NiceBidiWiFi::loop() {
 
   // 8. Time-based position estimation during movement (fallback when encoder unavailable)
   if (this->device_found_ && this->init_complete_ &&
-      (this->operation_state_ == STA_OPENING || this->operation_state_ == STA_CLOSING)) {
+      (this->operation_state_ == STA_OPENING || this->operation_state_ == STA_CLOSING) &&
+      (now - this->last_position_estimate_time_ >= T4_POSITION_ESTIMATE_MS)) {
     this->estimate_time_based_position_();
+    this->last_position_estimate_time_ = now;
   }
 
   // 9. Update status LEDs (~20Hz for smooth blink patterns)
@@ -255,8 +265,8 @@ void NiceBidiWiFi::load_learned_timings_() {
 }
 
 void NiceBidiWiFi::confirm_position_from_io_(uint8_t io_byte) {
-  bool limit_close = (io_byte & 0x01) != 0;
-  bool limit_open = (io_byte & 0x02) != 0;
+  bool limit_close = (io_byte & (this->swap_limit_switches_ ? 0x02 : 0x01)) != 0;
+  bool limit_open = (io_byte & (this->swap_limit_switches_ ? 0x01 : 0x02)) != 0;
 
   if (limit_close && this->operation_state_ == STA_CLOSED) {
     // Confirmed fully closed
@@ -268,44 +278,54 @@ void NiceBidiWiFi::confirm_position_from_io_(uint8_t io_byte) {
     this->pos_current_ = this->pos_open_;
     ESP_LOGD(TAG, "Position confirmed: OPEN via limit switch");
     this->notify_state_change_();
+  } else if ((limit_close && this->operation_state_ == STA_CLOSING) ||
+             (limit_open && this->operation_state_ == STA_OPENING)) {
+    // The gate is at the end it was moving to, so the end announcement was lost
+    ESP_LOGD(TAG, "Limit switch reached while still moving in the status, refreshing it");
+    this->request_status_refresh_();
   }
   this->awaiting_confirmation_ = false;
 }
 
-void NiceBidiWiFi::handle_movement_transition_(uint8_t old_state, uint8_t new_state) {
+// live: the change came from the controller as it happened, not from the periodic status poll
+void NiceBidiWiFi::handle_movement_transition_(uint8_t old_state, uint8_t new_state, bool live) {
   uint32_t now_ms = millis();
+
+  // Without a position register the ends are the status
+  if (this->position_unsupported_) {
+    if (new_state == STA_OPENED) {
+      this->pos_current_ = this->pos_open_;
+    } else if (new_state == STA_CLOSED) {
+      this->pos_current_ = this->pos_close_;
+    }
+  }
 
   // Track movement start
   if ((new_state == STA_OPENING || new_state == STA_CLOSING) &&
       old_state != STA_OPENING && old_state != STA_CLOSING) {
     this->movement_start_time_ = now_ms;
     this->position_at_movement_start_ = this->get_position_percent();
+    this->state_before_movement_ = old_state;
   }
 
-  // Learn duration when movement completes fully
+  // Learn the duration of a full travel, from one end to the other; a poll may be seconds late
   if ((old_state == STA_OPENING || old_state == STA_CLOSING) &&
       new_state != STA_OPENING && new_state != STA_CLOSING &&
       this->movement_start_time_ > 0) {
     uint32_t duration = now_ms - this->movement_start_time_;
 
-    if (duration >= T4_MIN_LEARNED_DURATION && duration <= T4_MAX_LEARNED_DURATION) {
-      if (old_state == STA_OPENING && new_state == STA_OPENED) {
-        // Check deviation from existing value
-        if (this->last_open_duration_ms_ == 0 ||
-            std::abs(static_cast<float>(duration) - static_cast<float>(this->last_open_duration_ms_)) /
-            static_cast<float>(this->last_open_duration_ms_) <= T4_LEARNING_DEVIATION + 0.5f) {
-          this->last_open_duration_ms_ = duration;
-          ESP_LOGI(TAG, "Learned open duration: %u ms", duration);
-          this->save_learned_timings_();
-        }
-      } else if (old_state == STA_CLOSING && new_state == STA_CLOSED) {
-        if (this->last_close_duration_ms_ == 0 ||
-            std::abs(static_cast<float>(duration) - static_cast<float>(this->last_close_duration_ms_)) /
-            static_cast<float>(this->last_close_duration_ms_) <= T4_LEARNING_DEVIATION + 0.5f) {
-          this->last_close_duration_ms_ = duration;
-          ESP_LOGI(TAG, "Learned close duration: %u ms", duration);
-          this->save_learned_timings_();
-        }
+    if (!live) {
+      ESP_LOGD(TAG, "End of travel seen by the status poll, duration not learned");
+    } else if (duration >= T4_MIN_LEARNED_DURATION && duration <= T4_MAX_LEARNED_DURATION) {
+      if (old_state == STA_OPENING && new_state == STA_OPENED && this->state_before_movement_ == STA_CLOSED) {
+        this->last_open_duration_ms_ = duration;
+        ESP_LOGI(TAG, "Learned open duration: %u ms", duration);
+        this->save_learned_timings_();
+      } else if (old_state == STA_CLOSING && new_state == STA_CLOSED &&
+                 (this->state_before_movement_ == STA_OPENED || this->state_before_movement_ == STA_PAUSE)) {
+        this->last_close_duration_ms_ = duration;
+        ESP_LOGI(TAG, "Learned close duration: %u ms", duration);
+        this->save_learned_timings_();
       }
     }
     this->movement_start_time_ = 0;
@@ -343,19 +363,20 @@ void NiceBidiWiFi::estimate_time_based_position_() {
     return;  // No learned timing available
   }
 
+  // The learned duration is a full travel, so the gate covers elapsed / duration of the way wherever it started
   float elapsed = static_cast<float>(now - this->movement_start_time_);
-  float progress = elapsed / static_cast<float>(duration_ms);
-  if (progress > 1.0f) progress = 1.0f;
+  float travelled = elapsed / static_cast<float>(duration_ms);
 
   float estimated_pos;
   if (this->operation_state_ == STA_OPENING) {
-    estimated_pos = this->position_at_movement_start_ + progress * (1.0f - this->position_at_movement_start_);
+    estimated_pos = this->position_at_movement_start_ + travelled;
   } else {
-    estimated_pos = this->position_at_movement_start_ - progress * this->position_at_movement_start_;
+    estimated_pos = this->position_at_movement_start_ - travelled;
   }
 
   if (estimated_pos < 0.0f) estimated_pos = 0.0f;
   if (estimated_pos > 1.0f) estimated_pos = 1.0f;
+  this->pos_current_ = this->pos_close_ + static_cast<uint16_t>(estimated_pos * (this->pos_open_ - this->pos_close_));
 
   // Publish estimated position to sensors
   if (this->position_sensor_ != nullptr)
@@ -398,6 +419,13 @@ void NiceBidiWiFi::parse_packet_(const T4RxPacket &packet) {
   if (body_size == 0x0D && d.size() > 13 && d[13] == 0xFD) {
     uint8_t err_dev = (d.size() > 9) ? d[9] : 0;
     uint8_t err_reg = (d.size() > 10) ? d[10] : 0;
+    if (err_reg == REG_CUR_POS) {
+      if (!this->position_unsupported_) {
+        this->position_unsupported_ = true;
+        ESP_LOGI(TAG, "Controller has no position register, position polling off");
+      }
+      return;
+    }
     ESP_LOGW(TAG, "Error: device=0x%02X register=0x%02X (%s) not supported", err_dev, err_reg, t4_register_name(err_reg));
     return;
   }
@@ -494,11 +522,17 @@ void NiceBidiWiFi::parse_evt_packet_(const std::vector<uint8_t> &d) {
 
       case REG_STATUS:
         if (data_len >= 1 && d.size() > 14) {
+          if (d[14] >= 0x80) {
+            ESP_LOGD(TAG, "Status register holds a command byte (0x%02X), ignored", d[14]);
+            break;
+          }
           uint8_t old_state = this->operation_state_;
           this->operation_state_ = d[14];
           if (old_state != this->operation_state_) {
             ESP_LOGI(TAG, "Status: %s (0x%02X)", t4_auto_status_name(this->operation_state_), this->operation_state_);
-            this->handle_movement_transition_(old_state, this->operation_state_);
+            // A poll asked right after a garbled packet is as timely as the announcement it replaces
+            bool live = millis() - this->junk_refresh_time_ < T4_JUNK_REFRESH_MS;
+            this->handle_movement_transition_(old_state, this->operation_state_, live);
             this->notify_state_change_();
           }
         }
@@ -613,9 +647,9 @@ void NiceBidiWiFi::parse_evt_packet_(const std::vector<uint8_t> &d) {
         if (d.size() > 16) {
           uint8_t io_byte = d[16];
           if (this->limit_close_sensor_ != nullptr)
-            this->limit_close_sensor_->publish_state((io_byte & 0x01) != 0);
+            this->limit_close_sensor_->publish_state((io_byte & (this->swap_limit_switches_ ? 0x02 : 0x01)) != 0);
           if (this->limit_open_sensor_ != nullptr)
-            this->limit_open_sensor_->publish_state((io_byte & 0x02) != 0);
+            this->limit_open_sensor_->publish_state((io_byte & (this->swap_limit_switches_ ? 0x01 : 0x02)) != 0);
           if (this->photocell_sensor_ != nullptr)
             this->photocell_sensor_->publish_state((io_byte & 0x04) != 0);
           // Use limit switches to confirm position
@@ -876,13 +910,48 @@ void NiceBidiWiFi::parse_cmd_status_(const std::vector<uint8_t> &d) {
       ESP_LOGI(TAG, "CMD status: %s", t4_auto_status_name(status_byte));
       break;
     default:
-      ESP_LOGD(TAG, "CMD status byte: 0x%02X", status_byte);
+      if (status_byte >= 0x80 && d.size() > 12) {
+        this->handle_command_(status_byte, d[12]);
+      } else {
+        ESP_LOGD(TAG, "CMD status byte: 0x%02X", status_byte);
+      }
       break;
   }
 
+  // A maneuver that reached its end stopped normally
+  if ((status_byte == STA_OPENED || status_byte == STA_CLOSED) && this->last_stop_reason_text_sensor_ != nullptr) {
+    this->last_stop_reason_text_sensor_->publish_state(t4_stop_reason_name(STOP_NORMAL));
+  }
+
   if (old_state != this->operation_state_) {
+    this->handle_movement_transition_(old_state, this->operation_state_);
     this->notify_state_change_();
   }
+}
+
+// A maneuver command the controller took, announced before the status changes
+void NiceBidiWiFi::handle_command_(uint8_t command, uint8_t source) {
+  const char *source_name = t4_command_source_name(source);
+  ESP_LOGI(TAG, "Command 0x%02X from %s (0x%02X)", command, source_name, source);
+
+  if (this->last_command_source_text_sensor_ != nullptr) {
+    if (source == SRC_REMOTE || source == SRC_SBS_INPUT || source == SRC_PHOTOCELL || source == SRC_BUS) {
+      this->last_command_source_text_sensor_->publish_state(source_name);
+    } else {
+      this->last_command_source_text_sensor_->publish_state(str_sprintf("Source 0x%02X", source));
+    }
+  }
+
+  // The photocell reverses the gate; a stop from anything else is a normal stop
+  if (this->last_stop_reason_text_sensor_ != nullptr) {
+    if (source == SRC_PHOTOCELL) {
+      this->last_stop_reason_text_sensor_->publish_state(t4_stop_reason_name(STOP_PHOTO_INTERVENTION));
+    } else if (command == MAN_STOP) {
+      this->last_stop_reason_text_sensor_->publish_state(t4_stop_reason_name(STOP_NORMAL));
+    }
+  }
+
+  this->command_callbacks_.call(command, source);
 }
 
 // --- OXI (Remote Control) Sniffing ---

@@ -17,6 +17,11 @@ void NiceSwitch::dump_config() {
 }
 
 void NiceSwitch::write_state(bool state) {
+  if (!this->hub_->installer_mode()) {
+    ESP_LOGW(TAG, "Register 0x%02X not written: installer mode is off", this->register_id_);
+    this->on_state_change_();
+    return;
+  }
   ESP_LOGD(TAG, "Setting register 0x%02X to %s", this->register_id_, state ? "ON" : "OFF");
   std::vector<uint8_t> data = {state ? (uint8_t) 0x01 : (uint8_t) 0x00};
   this->hub_->send_inf_cmd(DEV_CONTROLLER, this->register_id_, RUN_SET, 0x00, data);

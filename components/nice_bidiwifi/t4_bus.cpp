@@ -45,6 +45,8 @@ bool T4Bus::receive(T4RxPacket &packet) {
           rx_buffer_.clear();
           rx_buffer_.push_back(byte);
           rx_state_ = RX_READ_SIZE;
+        } else {
+          this->junk_bytes_++;
         }
         break;
 
@@ -56,6 +58,7 @@ bool T4Bus::receive(T4RxPacket &packet) {
         } else if (byte == 0x00) {
           // Additional break bytes — stay in WAIT_START
         } else {
+          this->junk_bytes_++;
           reset_rx_();
         }
         break;

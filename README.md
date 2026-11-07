@@ -23,11 +23,13 @@ The [Nice BiDi-WiFi](https://www.niceforyou.com/) module is an ESP32-WROOM-32E b
 | Controller | Type | Status |
 |-----------|------|--------|
 | **MC800** | Swing gate | Fully tested and working |
+| **ROA40 R10** (ROX600) | Sliding gate | Tested; needs `swap_limit_switches: true`, has no position register, no photocell input state and no blackbox register |
 
 Other Nice controllers with IBT4N/BusT4 interface should work (Walky, Robus, Road 400, etc.) with device-specific adaptations built in:
 - **Walky (WLA)** — 1-byte position values (auto-detected)
 - **Robus (ROB)** — Position polling disabled during movement (auto-detected)
 - **Road 400** — Alternate status codes 0x83/0x84 handled
+- **Controllers without a position register (ROA40)** — position polling stops after the first "not supported" answer, the ends come from the controller status and the position between them from the learned open and close durations; a duration is learned only from a full travel, end to end. A requested position between the ends is reached by stopping the gate when the estimate gets there, so it lands within the controller's reaction time of the target
 
 ## Hardware Setup
 
@@ -267,6 +269,8 @@ text_sensor:
       name: "Manufacturer"
     last_stop_reason:
       name: "Last Stop Reason"
+    last_command_source:
+      name: "Last Command Source"
 
 # Diagnostics
 binary_sensor:
@@ -314,14 +318,59 @@ number:
 
 ```yaml
 nice_bidiwifi:
-  uart_rx_pin: 18          # T4 bus RX (default: 18)
-  uart_tx_pin: 21          # T4 bus TX (default: 21)
-  hub_address: 0x5090      # Hub address (default: 0x5090)
-  led1_red_pin: 25         # LED1 red (default: 25)
-  led1_green_pin: 2        # LED1 green (default: 2)
-  led2_red_pin: 27         # LED2 red (default: 27)
-  led2_green_pin: 26       # LED2 green (default: 26)
-  led3_pin: 22             # LED3 (default: 22)
+  uart_rx_pin: 18             # T4 bus RX (default: 18)
+  uart_tx_pin: 21             # T4 bus TX (default: 21)
+  hub_address: 0x5090         # Hub address (default: 0x5090)
+  led1_red_pin: 25            # LED1 red (default: 25)
+  led1_green_pin: 2           # LED1 green (default: 2)
+  led2_red_pin: 27            # LED2 red (default: 27)
+  led2_green_pin: 26          # LED2 green (default: 26)
+  led3_pin: 22                # LED3 (default: 22)
+  swap_limit_switches: false  # Swap the open/close limit bits, as the ROA40 needs (default: false)
+  installer_mode: false       # Allow writes to the controller's settings (default: false)
+```
+
+### Maneuver Commands
+
+Before the status changes, the controller announces the maneuver command it took and who issued it.
+The `last_command_source` text sensor shows the source of the last one, and the `on_command` trigger
+gives both bytes to an automation (`command` and `source`, both `uint8_t`):
+
+| Command | Meaning |
+|---------|---------|
+| `0x83` | Open |
+| `0x84` | Close |
+| `0x88` | Stop |
+| `0x81` | Step by step, sent by the photocell when it reverses a closing gate |
+
+| Source | Meaning |
+|--------|---------|
+| `0x01` | Remote |
+| `0x07` | Step-by-step input |
+| `0x0A` | Photocell |
+| `0x19` | Bus (this module) |
+
+Seen on the ROA40; other sources show as `Source 0x..`. The photocell reversal also sets `last_stop_reason`
+to "Photo intervention" on controllers without the blackbox register. Example, an event entity that fires
+on every reversal:
+
+```yaml
+nice_bidiwifi:
+  on_command:
+    - if:
+        condition:
+          lambda: 'return source == 0x0A;'
+        then:
+          - event.trigger:
+              id: gate_event
+              event_type: photocell_reversal
+
+event:
+  - platform: template
+    id: gate_event
+    name: "Gate Event"
+    event_types:
+      - photocell_reversal
 ```
 
 ## Apple HomeKit (optional)
@@ -376,6 +425,7 @@ The Nice T4 bus protocol operates at 19200 baud 8N1 with UART break signaling:
 - **CRC**: XOR-based (CRC1 for header, CRC2 for message body)
 - **Protocols**: DEP (direct commands) and DMP (register read/write)
 - **Hub address**: 0x5090 (default for BiDi-WiFi hardware)
+- **Lost packets**: a status announcement sometimes arrives without its start byte; the stray bytes trigger an immediate status refresh, so the state is right within a fraction of a second instead of at the next 15 s poll. A limit switch seen while the status still says moving does the same at the next 5 s input poll
 
 ### Architecture
 

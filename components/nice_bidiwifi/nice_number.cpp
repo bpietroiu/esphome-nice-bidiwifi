@@ -19,6 +19,11 @@ void NiceNumber::dump_config() {
 }
 
 void NiceNumber::control(float value) {
+  if (!this->hub_->installer_mode()) {
+    ESP_LOGW(TAG, "Register 0x%02X not written: installer mode is off", this->register_id_);
+    this->publish_state(this->state);
+    return;
+  }
   ESP_LOGD(TAG, "Setting register 0x%02X to %.0f", this->register_id_, value);
   uint8_t byte_val = static_cast<uint8_t>(value);
   // Send as 2-byte data: [prefix=0x01, value] — matches Nice app format

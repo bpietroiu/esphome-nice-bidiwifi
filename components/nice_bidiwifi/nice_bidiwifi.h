@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
@@ -66,6 +67,9 @@ class NiceBidiWiFi : public Component {
   void set_photocell_sensor(binary_sensor::BinarySensor *s) { this->photocell_sensor_ = s; }
   void set_limit_open_sensor(binary_sensor::BinarySensor *s) { this->limit_open_sensor_ = s; }
   void set_limit_close_sensor(binary_sensor::BinarySensor *s) { this->limit_close_sensor_ = s; }
+  void set_swap_limit_switches(bool swap) { this->swap_limit_switches_ = swap; }
+  void set_installer_mode(bool on) { this->installer_mode_ = on; }
+  bool installer_mode() const { return this->installer_mode_; }
 
   // Command API
   void send_control_cmd(uint8_t cmd);
@@ -92,6 +96,7 @@ class NiceBidiWiFi : public Component {
   float get_position_percent() const;
 
   uint8_t get_operation_state() const { return this->operation_state_; }
+  bool position_unsupported() const { return this->position_unsupported_; }
 
   bool is_auto_close() const { return this->auto_close_; }
   bool is_photo_close() const { return this->photo_close_; }
@@ -108,10 +113,16 @@ class NiceBidiWiFi : public Component {
   // Additional text sensor setters
   void set_oxi_event_text_sensor(text_sensor::TextSensor *s) { this->oxi_event_text_sensor_ = s; }
   void set_last_stop_reason_text_sensor(text_sensor::TextSensor *s) { this->last_stop_reason_text_sensor_ = s; }
+  void set_last_command_source_text_sensor(text_sensor::TextSensor *s) {
+    this->last_command_source_text_sensor_ = s;
+  }
 
-  // Callback
+  // Callbacks
   void add_on_state_callback(std::function<void()> &&callback) {
     this->state_callbacks_.push_back(std::move(callback));
+  }
+  void add_on_command_callback(std::function<void(uint8_t, uint8_t)> &&callback) {
+    this->command_callbacks_.add(std::move(callback));
   }
 
  protected:
@@ -166,13 +177,19 @@ class NiceBidiWiFi : public Component {
   // Device type flags (auto-detected from product name)
   bool is_walky_{false};
   bool is_robus_{false};
+  bool swap_limit_switches_{false};
+  bool installer_mode_{false};
+  bool position_unsupported_{false};
 
   // Time-based position estimation
   uint32_t movement_start_time_{0};
   float position_at_movement_start_{0.0f};
+  uint8_t state_before_movement_{STA_STOPPED};
   uint32_t last_open_duration_ms_{0};
   uint32_t last_close_duration_ms_{0};
   uint32_t last_encoder_update_time_{0};
+  uint32_t last_position_estimate_time_{0};
+  uint32_t junk_refresh_time_{0};
 
   // Status confirmation
   bool awaiting_confirmation_{false};
@@ -230,9 +247,11 @@ class NiceBidiWiFi : public Component {
 
   // Additional text sensor pointers
   text_sensor::TextSensor *last_stop_reason_text_sensor_{nullptr};
+  text_sensor::TextSensor *last_command_source_text_sensor_{nullptr};
 
   // Callbacks
   std::vector<std::function<void()>> state_callbacks_;
+  CallbackManager<void(uint8_t, uint8_t)> command_callbacks_;
 
   // Persistence struct
   struct LearnedTimings {
@@ -253,7 +272,8 @@ class NiceBidiWiFi : public Component {
   void estimate_time_based_position_();
   void save_learned_timings_();
   void load_learned_timings_();
-  void handle_movement_transition_(uint8_t old_state, uint8_t new_state);
+  void handle_movement_transition_(uint8_t old_state, uint8_t new_state, bool live = true);
+  void handle_command_(uint8_t command, uint8_t source);
   void confirm_position_from_io_(uint8_t io_byte);
   void parse_packet_(const T4RxPacket &packet);
   void parse_evt_packet_(const std::vector<uint8_t> &data);
@@ -266,6 +286,14 @@ class NiceBidiWiFi : public Component {
   void setup_leds_();
   void update_leds_();
   void set_led_(int pin, bool on);
+};
+
+// Fires on every maneuver command the controller announces: the command byte and who issued it
+class CommandTrigger : public Trigger<uint8_t, uint8_t> {
+ public:
+  explicit CommandTrigger(NiceBidiWiFi *hub) {
+    hub->add_on_command_callback([this](uint8_t command, uint8_t source) { this->trigger(command, source); });
+  }
 };
 
 }  // namespace nice_bidiwifi

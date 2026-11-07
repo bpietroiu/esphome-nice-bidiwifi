@@ -162,6 +162,16 @@ const char *t4_stop_reason_name(uint8_t reason) {
   }
 }
 
+const char *t4_command_source_name(uint8_t source) {
+  switch (source) {
+    case SRC_REMOTE: return "Remote";
+    case SRC_SBS_INPUT: return "Step-by-step input";
+    case SRC_PHOTOCELL: return "Photocell";
+    case SRC_BUS: return "Bus";
+    default: return "Unknown";
+  }
+}
+
 const char *t4_register_name(uint8_t reg) {
   switch (reg) {
     case REG_TYPE_M: return "Motor Type";

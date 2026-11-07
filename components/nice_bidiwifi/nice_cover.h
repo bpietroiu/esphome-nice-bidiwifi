@@ -22,10 +22,13 @@ class NiceCover : public cover::Cover, public Component {
   void on_state_change_();
 
   NiceBidiWiFi *hub_{nullptr};
+  optional<float> target_position_;  // a requested position between the ends, stopped at by the component
+  cover::CoverOperation target_direction_{cover::COVER_OPERATION_IDLE};  // the way the gate was sent to reach it
   float last_published_pos_{-1.0f};
   cover::CoverOperation last_published_op_{cover::COVER_OPERATION_IDLE};
 
   static constexpr float CLOSED_THRESHOLD = 0.007f;
+  static constexpr float POSITION_TOLERANCE = 0.02f;
 };
 
 }  // namespace nice_bidiwifi
