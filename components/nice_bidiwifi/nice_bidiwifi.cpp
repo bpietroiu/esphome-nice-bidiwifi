@@ -265,8 +265,8 @@ void NiceBidiWiFi::load_learned_timings_() {
 }
 
 void NiceBidiWiFi::confirm_position_from_io_(uint8_t io_byte) {
-  bool limit_close = (io_byte & 0x01) != 0;
-  bool limit_open = (io_byte & 0x02) != 0;
+  bool limit_close = (io_byte & (this->swap_limit_switches_ ? 0x02 : 0x01)) != 0;
+  bool limit_open = (io_byte & (this->swap_limit_switches_ ? 0x01 : 0x02)) != 0;
 
   if (limit_close && this->operation_state_ == STA_CLOSED) {
     // Confirmed fully closed
@@ -647,9 +647,9 @@ void NiceBidiWiFi::parse_evt_packet_(const std::vector<uint8_t> &d) {
         if (d.size() > 16) {
           uint8_t io_byte = d[16];
           if (this->limit_close_sensor_ != nullptr)
-            this->limit_close_sensor_->publish_state((io_byte & 0x01) != 0);
+            this->limit_close_sensor_->publish_state((io_byte & (this->swap_limit_switches_ ? 0x02 : 0x01)) != 0);
           if (this->limit_open_sensor_ != nullptr)
-            this->limit_open_sensor_->publish_state((io_byte & 0x02) != 0);
+            this->limit_open_sensor_->publish_state((io_byte & (this->swap_limit_switches_ ? 0x01 : 0x02)) != 0);
           if (this->photocell_sensor_ != nullptr)
             this->photocell_sensor_->publish_state((io_byte & 0x04) != 0);
           // Use limit switches to confirm position

@@ -16,6 +16,7 @@ CONF_LED1_GREEN_PIN = "led1_green_pin"
 CONF_LED2_RED_PIN = "led2_red_pin"
 CONF_LED2_GREEN_PIN = "led2_green_pin"
 CONF_LED3_PIN = "led3_pin"
+CONF_SWAP_LIMIT_SWITCHES = "swap_limit_switches"
 
 nice_bidiwifi_ns = cg.esphome_ns.namespace("nice_bidiwifi")
 NiceBidiWiFi = nice_bidiwifi_ns.class_("NiceBidiWiFi", cg.Component)
@@ -31,6 +32,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_LED2_RED_PIN, default=27): pins.internal_gpio_output_pin_number,
         cv.Optional(CONF_LED2_GREEN_PIN, default=26): pins.internal_gpio_output_pin_number,
         cv.Optional(CONF_LED3_PIN, default=22): pins.internal_gpio_output_pin_number,
+        cv.Optional(CONF_SWAP_LIMIT_SWITCHES, default=False): cv.boolean,
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -46,3 +48,4 @@ async def to_code(config):
     cg.add(var.set_led2_red_pin(config[CONF_LED2_RED_PIN]))
     cg.add(var.set_led2_green_pin(config[CONF_LED2_GREEN_PIN]))
     cg.add(var.set_led3_pin(config[CONF_LED3_PIN]))
+    cg.add(var.set_swap_limit_switches(config[CONF_SWAP_LIMIT_SWITCHES]))

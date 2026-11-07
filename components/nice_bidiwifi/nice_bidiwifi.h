@@ -66,6 +66,7 @@ class NiceBidiWiFi : public Component {
   void set_photocell_sensor(binary_sensor::BinarySensor *s) { this->photocell_sensor_ = s; }
   void set_limit_open_sensor(binary_sensor::BinarySensor *s) { this->limit_open_sensor_ = s; }
   void set_limit_close_sensor(binary_sensor::BinarySensor *s) { this->limit_close_sensor_ = s; }
+  void set_swap_limit_switches(bool swap) { this->swap_limit_switches_ = swap; }
 
   // Command API
   void send_control_cmd(uint8_t cmd);
@@ -167,6 +168,7 @@ class NiceBidiWiFi : public Component {
   // Device type flags (auto-detected from product name)
   bool is_walky_{false};
   bool is_robus_{false};
+  bool swap_limit_switches_{false};
   bool position_unsupported_{false};
 
   // Time-based position estimation

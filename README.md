@@ -314,14 +314,15 @@ number:
 
 ```yaml
 nice_bidiwifi:
-  uart_rx_pin: 18          # T4 bus RX (default: 18)
-  uart_tx_pin: 21          # T4 bus TX (default: 21)
-  hub_address: 0x5090      # Hub address (default: 0x5090)
-  led1_red_pin: 25         # LED1 red (default: 25)
-  led1_green_pin: 2        # LED1 green (default: 2)
-  led2_red_pin: 27         # LED2 red (default: 27)
-  led2_green_pin: 26       # LED2 green (default: 26)
-  led3_pin: 22             # LED3 (default: 22)
+  uart_rx_pin: 18             # T4 bus RX (default: 18)
+  uart_tx_pin: 21             # T4 bus TX (default: 21)
+  hub_address: 0x5090         # Hub address (default: 0x5090)
+  led1_red_pin: 25            # LED1 red (default: 25)
+  led1_green_pin: 2           # LED1 green (default: 2)
+  led2_red_pin: 27            # LED2 red (default: 27)
+  led2_green_pin: 26          # LED2 green (default: 26)
+  led3_pin: 22                # LED3 (default: 22)
+  swap_limit_switches: false  # Swap the open/close limit bits, as the ROA40 needs (default: false)
 ```
 
 ## Apple HomeKit (optional)
