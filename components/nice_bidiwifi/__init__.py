@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.const import CONF_ID
-from esphome import pins
+from esphome.const import CONF_ID, CONF_TRIGGER_ID
+from esphome import automation, pins
 
 CODEOWNERS = ["@ESPHome_BidiWiFi"]
 MULTI_CONF = False
@@ -18,9 +18,13 @@ CONF_LED2_GREEN_PIN = "led2_green_pin"
 CONF_LED3_PIN = "led3_pin"
 CONF_SWAP_LIMIT_SWITCHES = "swap_limit_switches"
 CONF_INSTALLER_MODE = "installer_mode"
+CONF_ON_COMMAND = "on_command"
 
 nice_bidiwifi_ns = cg.esphome_ns.namespace("nice_bidiwifi")
 NiceBidiWiFi = nice_bidiwifi_ns.class_("NiceBidiWiFi", cg.Component)
+CommandTrigger = nice_bidiwifi_ns.class_(
+    "CommandTrigger", automation.Trigger.template(cg.uint8, cg.uint8)
+)
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -35,6 +39,11 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_LED3_PIN, default=22): pins.internal_gpio_output_pin_number,
         cv.Optional(CONF_SWAP_LIMIT_SWITCHES, default=False): cv.boolean,
         cv.Optional(CONF_INSTALLER_MODE, default=False): cv.boolean,
+        cv.Optional(CONF_ON_COMMAND): automation.validate_automation(
+            {
+                cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(CommandTrigger),
+            }
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -52,3 +61,8 @@ async def to_code(config):
     cg.add(var.set_led3_pin(config[CONF_LED3_PIN]))
     cg.add(var.set_swap_limit_switches(config[CONF_SWAP_LIMIT_SWITCHES]))
     cg.add(var.set_installer_mode(config[CONF_INSTALLER_MODE]))
+    for conf in config.get(CONF_ON_COMMAND, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(
+            trigger, [(cg.uint8, "command"), (cg.uint8, "source")], conf
+        )

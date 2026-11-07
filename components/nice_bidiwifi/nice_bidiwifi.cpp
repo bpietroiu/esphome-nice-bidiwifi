@@ -910,7 +910,11 @@ void NiceBidiWiFi::parse_cmd_status_(const std::vector<uint8_t> &d) {
       ESP_LOGI(TAG, "CMD status: %s", t4_auto_status_name(status_byte));
       break;
     default:
-      ESP_LOGD(TAG, "CMD status byte: 0x%02X", status_byte);
+      if (status_byte >= 0x80 && d.size() > 12) {
+        this->handle_command_(status_byte, d[12]);
+      } else {
+        ESP_LOGD(TAG, "CMD status byte: 0x%02X", status_byte);
+      }
       break;
   }
 
@@ -918,6 +922,22 @@ void NiceBidiWiFi::parse_cmd_status_(const std::vector<uint8_t> &d) {
     this->handle_movement_transition_(old_state, this->operation_state_);
     this->notify_state_change_();
   }
+}
+
+// A maneuver command the controller took, announced before the status changes
+void NiceBidiWiFi::handle_command_(uint8_t command, uint8_t source) {
+  const char *source_name = t4_command_source_name(source);
+  ESP_LOGI(TAG, "Command 0x%02X from %s (0x%02X)", command, source_name, source);
+
+  if (this->last_command_source_text_sensor_ != nullptr) {
+    if (source == SRC_REMOTE || source == SRC_SBS_INPUT || source == SRC_PHOTOCELL || source == SRC_BUS) {
+      this->last_command_source_text_sensor_->publish_state(source_name);
+    } else {
+      this->last_command_source_text_sensor_->publish_state(str_sprintf("Source 0x%02X", source));
+    }
+  }
+
+  this->command_callbacks_.call(command, source);
 }
 
 // --- OXI (Remote Control) Sniffing ---

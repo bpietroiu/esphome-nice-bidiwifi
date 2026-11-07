@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
@@ -112,10 +113,16 @@ class NiceBidiWiFi : public Component {
   // Additional text sensor setters
   void set_oxi_event_text_sensor(text_sensor::TextSensor *s) { this->oxi_event_text_sensor_ = s; }
   void set_last_stop_reason_text_sensor(text_sensor::TextSensor *s) { this->last_stop_reason_text_sensor_ = s; }
+  void set_last_command_source_text_sensor(text_sensor::TextSensor *s) {
+    this->last_command_source_text_sensor_ = s;
+  }
 
-  // Callback
+  // Callbacks
   void add_on_state_callback(std::function<void()> &&callback) {
     this->state_callbacks_.push_back(std::move(callback));
+  }
+  void add_on_command_callback(std::function<void(uint8_t, uint8_t)> &&callback) {
+    this->command_callbacks_.add(std::move(callback));
   }
 
  protected:
@@ -240,9 +247,11 @@ class NiceBidiWiFi : public Component {
 
   // Additional text sensor pointers
   text_sensor::TextSensor *last_stop_reason_text_sensor_{nullptr};
+  text_sensor::TextSensor *last_command_source_text_sensor_{nullptr};
 
   // Callbacks
   std::vector<std::function<void()>> state_callbacks_;
+  CallbackManager<void(uint8_t, uint8_t)> command_callbacks_;
 
   // Persistence struct
   struct LearnedTimings {
@@ -264,6 +273,7 @@ class NiceBidiWiFi : public Component {
   void save_learned_timings_();
   void load_learned_timings_();
   void handle_movement_transition_(uint8_t old_state, uint8_t new_state, bool live = true);
+  void handle_command_(uint8_t command, uint8_t source);
   void confirm_position_from_io_(uint8_t io_byte);
   void parse_packet_(const T4RxPacket &packet);
   void parse_evt_packet_(const std::vector<uint8_t> &data);
@@ -276,6 +286,14 @@ class NiceBidiWiFi : public Component {
   void setup_leds_();
   void update_leds_();
   void set_led_(int pin, bool on);
+};
+
+// Fires on every maneuver command the controller announces: the command byte and who issued it
+class CommandTrigger : public Trigger<uint8_t, uint8_t> {
+ public:
+  explicit CommandTrigger(NiceBidiWiFi *hub) {
+    hub->add_on_command_callback([this](uint8_t command, uint8_t source) { this->trigger(command, source); });
+  }
 };
 
 }  // namespace nice_bidiwifi

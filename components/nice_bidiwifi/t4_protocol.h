@@ -226,6 +226,22 @@ enum T4AutoStatus : uint8_t {
   STA_PART_OPENED = 0x10,
 };
 
+// Maneuver commands the controller announces (CMD packet, bit 7 set) before the status changes
+enum T4ManeuverCmd : uint8_t {
+  MAN_SBS = 0x81,  // step by step, also the photocell reversal while closing
+  MAN_OPEN = 0x83,
+  MAN_CLOSE = 0x84,
+  MAN_STOP = 0x88,
+};
+
+// Who issued a maneuver command (second byte of the CMD packet)
+enum T4CommandSource : uint8_t {
+  SRC_REMOTE = 0x01,
+  SRC_SBS_INPUT = 0x07,
+  SRC_PHOTOCELL = 0x0A,
+  SRC_BUS = 0x19,
+};
+
 // Maneuver stop/error reasons (from DIAG_BB register 0xD0)
 enum T4StopReason : uint8_t {
   STOP_NORMAL = 0x00,
@@ -281,6 +297,9 @@ const char *t4_control_cmd_name(uint8_t cmd);
 
 // Get stop reason name string
 const char *t4_stop_reason_name(uint8_t reason);
+
+// Get command source name
+const char *t4_command_source_name(uint8_t source);
 
 // Get register name string
 const char *t4_register_name(uint8_t reg);

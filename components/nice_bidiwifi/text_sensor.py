@@ -15,6 +15,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional("manufacturer"): text_sensor.text_sensor_schema(),
         cv.Optional("oxi_event"): text_sensor.text_sensor_schema(),
         cv.Optional("last_stop_reason"): text_sensor.text_sensor_schema(),
+        cv.Optional("last_command_source"): text_sensor.text_sensor_schema(),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -27,6 +28,7 @@ TEXT_SENSOR_KEYS = {
     "manufacturer": "set_manufacturer_text_sensor",
     "oxi_event": "set_oxi_event_text_sensor",
     "last_stop_reason": "set_last_stop_reason_text_sensor",
+    "last_command_source": "set_last_command_source_text_sensor",
 }
 
 

@@ -267,6 +267,8 @@ text_sensor:
       name: "Manufacturer"
     last_stop_reason:
       name: "Last Stop Reason"
+    last_command_source:
+      name: "Last Command Source"
 
 # Diagnostics
 binary_sensor:
@@ -324,6 +326,48 @@ nice_bidiwifi:
   led3_pin: 22                # LED3 (default: 22)
   swap_limit_switches: false  # Swap the open/close limit bits, as the ROA40 needs (default: false)
   installer_mode: false       # Allow writes to the controller's settings (default: false)
+```
+
+### Maneuver Commands
+
+Before the status changes, the controller announces the maneuver command it took and who issued it.
+The `last_command_source` text sensor shows the source of the last one, and the `on_command` trigger
+gives both bytes to an automation (`command` and `source`, both `uint8_t`):
+
+| Command | Meaning |
+|---------|---------|
+| `0x83` | Open |
+| `0x84` | Close |
+| `0x88` | Stop |
+| `0x81` | Step by step, sent by the photocell when it reverses a closing gate |
+
+| Source | Meaning |
+|--------|---------|
+| `0x01` | Remote |
+| `0x07` | Step-by-step input |
+| `0x0A` | Photocell |
+| `0x19` | Bus (this module) |
+
+Seen on the ROA40; other sources show as `Source 0x..`. Example, an event entity that fires
+on every reversal:
+
+```yaml
+nice_bidiwifi:
+  on_command:
+    - if:
+        condition:
+          lambda: 'return source == 0x0A;'
+        then:
+          - event.trigger:
+              id: gate_event
+              event_type: photocell_reversal
+
+event:
+  - platform: template
+    id: gate_event
+    name: "Gate Event"
+    event_types:
+      - photocell_reversal
 ```
 
 ## Apple HomeKit (optional)
