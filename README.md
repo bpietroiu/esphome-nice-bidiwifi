@@ -23,11 +23,13 @@ The [Nice BiDi-WiFi](https://www.niceforyou.com/) module is an ESP32-WROOM-32E b
 | Controller | Type | Status |
 |-----------|------|--------|
 | **MC800** | Swing gate | Fully tested and working |
+| **ROA40 R10** (ROX600) | Sliding gate | Tested; needs `swap_limit_switches: true`, has no position register, no photocell input state and no blackbox register |
 
 Other Nice controllers with IBT4N/BusT4 interface should work (Walky, Robus, Road 400, etc.) with device-specific adaptations built in:
 - **Walky (WLA)** — 1-byte position values (auto-detected)
 - **Robus (ROB)** — Position polling disabled during movement (auto-detected)
 - **Road 400** — Alternate status codes 0x83/0x84 handled
+- **Controllers without a position register (ROA40)** — position polling stops after the first "not supported" answer, the ends come from the controller status and the position between them from the learned open and close durations; a duration is learned only from a full travel, end to end. A requested position between the ends is reached by stopping the gate when the estimate gets there, so it lands within the controller's reaction time of the target
 
 ## Hardware Setup
 
