@@ -881,6 +881,7 @@ void NiceBidiWiFi::parse_cmd_status_(const std::vector<uint8_t> &d) {
   }
 
   if (old_state != this->operation_state_) {
+    this->handle_movement_transition_(old_state, this->operation_state_);
     this->notify_state_change_();
   }
 }
