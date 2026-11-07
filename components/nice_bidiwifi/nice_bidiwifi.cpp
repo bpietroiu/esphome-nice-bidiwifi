@@ -509,6 +509,10 @@ void NiceBidiWiFi::parse_evt_packet_(const std::vector<uint8_t> &d) {
 
       case REG_STATUS:
         if (data_len >= 1 && d.size() > 14) {
+          if (d[14] >= 0x80) {
+            ESP_LOGD(TAG, "Status register holds a command byte (0x%02X), ignored", d[14]);
+            break;
+          }
           uint8_t old_state = this->operation_state_;
           this->operation_state_ = d[14];
           if (old_state != this->operation_state_) {
