@@ -5,6 +5,7 @@ from esphome import pins
 
 CODEOWNERS = ["@ESPHome_BidiWiFi"]
 MULTI_CONF = False
+AUTO_LOAD = ["switch", "number"]
 
 CONF_NICE_BIDIWIFI_ID = "nice_bidiwifi_id"
 CONF_UART_RX_PIN = "uart_rx_pin"
