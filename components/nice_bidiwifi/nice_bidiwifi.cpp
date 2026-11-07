@@ -65,7 +65,7 @@ void NiceBidiWiFi::loop() {
   }
 
   // 5. Position polling during movement (skip for Robus — breaks if polled while moving)
-  if (this->device_found_ && this->init_complete_ && !this->is_robus_ &&
+  if (this->device_found_ && this->init_complete_ && !this->is_robus_ && !this->position_unsupported_ &&
       (this->operation_state_ == STA_OPENING || this->operation_state_ == STA_CLOSING) &&
       (now - this->last_position_poll_time_ >= T4_POSITION_POLL_MS)) {
     this->request_position_();
@@ -398,6 +398,13 @@ void NiceBidiWiFi::parse_packet_(const T4RxPacket &packet) {
   if (body_size == 0x0D && d.size() > 13 && d[13] == 0xFD) {
     uint8_t err_dev = (d.size() > 9) ? d[9] : 0;
     uint8_t err_reg = (d.size() > 10) ? d[10] : 0;
+    if (err_reg == REG_CUR_POS) {
+      if (!this->position_unsupported_) {
+        this->position_unsupported_ = true;
+        ESP_LOGI(TAG, "Controller has no position register, position polling off");
+      }
+      return;
+    }
     ESP_LOGW(TAG, "Error: device=0x%02X register=0x%02X (%s) not supported", err_dev, err_reg, t4_register_name(err_reg));
     return;
   }

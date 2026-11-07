@@ -92,6 +92,7 @@ class NiceBidiWiFi : public Component {
   float get_position_percent() const;
 
   uint8_t get_operation_state() const { return this->operation_state_; }
+  bool position_unsupported() const { return this->position_unsupported_; }
 
   bool is_auto_close() const { return this->auto_close_; }
   bool is_photo_close() const { return this->photo_close_; }
@@ -166,6 +167,7 @@ class NiceBidiWiFi : public Component {
   // Device type flags (auto-detected from product name)
   bool is_walky_{false};
   bool is_robus_{false};
+  bool position_unsupported_{false};
 
   // Time-based position estimation
   uint32_t movement_start_time_{0};
