@@ -44,6 +44,14 @@ void NiceBidiWiFi::loop() {
     }
   }
 
+  // Bytes that fit no packet: a packet lost its start, so ask for the status now
+  if (this->bus_.take_junk_bytes() > 0 && this->device_found_ && this->init_complete_ &&
+      now - this->junk_refresh_time_ >= T4_JUNK_REFRESH_MS) {
+    ESP_LOGD(TAG, "Garbled packet on the bus, refreshing the status");
+    this->junk_refresh_time_ = now;
+    this->request_status_confirmation_();
+  }
+
   // 2. Process TX queue
   if (this->bus_.ready_to_send() && !this->tx_queue_.empty()) {
     this->bus_.send(this->tx_queue_.front());
@@ -270,6 +278,11 @@ void NiceBidiWiFi::confirm_position_from_io_(uint8_t io_byte) {
     this->pos_current_ = this->pos_open_;
     ESP_LOGD(TAG, "Position confirmed: OPEN via limit switch");
     this->notify_state_change_();
+  } else if ((limit_close && this->operation_state_ == STA_CLOSING) ||
+             (limit_open && this->operation_state_ == STA_OPENING)) {
+    // The gate is at the end it was moving to, so the end announcement was lost
+    ESP_LOGD(TAG, "Limit switch reached while still moving in the status, refreshing it");
+    this->request_status_refresh_();
   }
   this->awaiting_confirmation_ = false;
 }
@@ -517,7 +530,9 @@ void NiceBidiWiFi::parse_evt_packet_(const std::vector<uint8_t> &d) {
           this->operation_state_ = d[14];
           if (old_state != this->operation_state_) {
             ESP_LOGI(TAG, "Status: %s (0x%02X)", t4_auto_status_name(this->operation_state_), this->operation_state_);
-            this->handle_movement_transition_(old_state, this->operation_state_, false);
+            // A poll asked right after a garbled packet is as timely as the announcement it replaces
+            bool live = millis() - this->junk_refresh_time_ < T4_JUNK_REFRESH_MS;
+            this->handle_movement_transition_(old_state, this->operation_state_, live);
             this->notify_state_change_();
           }
         }

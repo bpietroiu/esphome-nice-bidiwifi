@@ -16,6 +16,7 @@ static const uint32_t T4_REPLY_TIMEOUT_MS = 500;
 static const uint32_t T4_DISCOVERY_INTERVAL_MS = 10000;
 static const uint32_t T4_POSITION_POLL_MS = 500;
 static const uint32_t T4_POSITION_ESTIMATE_MS = 250;  // time-based position updates while moving
+static const uint32_t T4_JUNK_REFRESH_MS = 1000;        // one status refresh per garbled packet burst
 static const uint32_t T4_STATUS_REFRESH_MS = 15000;
 static const uint32_t T4_IO_POLL_MS = 5000;
 

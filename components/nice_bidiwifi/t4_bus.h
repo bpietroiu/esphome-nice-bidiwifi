@@ -43,8 +43,17 @@ class T4Bus {
   T4RxState rx_state_{RX_WAIT_SYNC};
   std::vector<uint8_t> rx_buffer_;
   uint8_t rx_expected_size_{0};
+  uint16_t junk_bytes_{0};
 
   void reset_rx_();
+
+ public:
+  // Bytes received since the last call that belonged to no packet, such as a packet whose start was missed
+  uint16_t take_junk_bytes() {
+    uint16_t n = this->junk_bytes_;
+    this->junk_bytes_ = 0;
+    return n;
+  }
   bool validate_packet_();
 
   // TX timing (ms, wraps safely with unsigned subtraction)

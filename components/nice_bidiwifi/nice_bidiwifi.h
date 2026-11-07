@@ -177,6 +177,7 @@ class NiceBidiWiFi : public Component {
   uint32_t last_close_duration_ms_{0};
   uint32_t last_encoder_update_time_{0};
   uint32_t last_position_estimate_time_{0};
+  uint32_t junk_refresh_time_{0};
 
   // Status confirmation
   bool awaiting_confirmation_{false};

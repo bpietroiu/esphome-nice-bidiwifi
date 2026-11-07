@@ -376,6 +376,7 @@ The Nice T4 bus protocol operates at 19200 baud 8N1 with UART break signaling:
 - **CRC**: XOR-based (CRC1 for header, CRC2 for message body)
 - **Protocols**: DEP (direct commands) and DMP (register read/write)
 - **Hub address**: 0x5090 (default for BiDi-WiFi hardware)
+- **Lost packets**: a status announcement sometimes arrives without its start byte; the stray bytes trigger an immediate status refresh, so the state is right within a fraction of a second instead of at the next 15 s poll. A limit switch seen while the status still says moving does the same at the next 5 s input poll
 
 ### Architecture
 
