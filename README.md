@@ -348,7 +348,8 @@ gives both bytes to an automation (`command` and `source`, both `uint8_t`):
 | `0x0A` | Photocell |
 | `0x19` | Bus (this module) |
 
-Seen on the ROA40; other sources show as `Source 0x..`. Example, an event entity that fires
+Seen on the ROA40; other sources show as `Source 0x..`. The photocell reversal also sets `last_stop_reason`
+to "Photo intervention" on controllers without the blackbox register. Example, an event entity that fires
 on every reversal:
 
 ```yaml

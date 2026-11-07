@@ -918,6 +918,11 @@ void NiceBidiWiFi::parse_cmd_status_(const std::vector<uint8_t> &d) {
       break;
   }
 
+  // A maneuver that reached its end stopped normally
+  if ((status_byte == STA_OPENED || status_byte == STA_CLOSED) && this->last_stop_reason_text_sensor_ != nullptr) {
+    this->last_stop_reason_text_sensor_->publish_state(t4_stop_reason_name(STOP_NORMAL));
+  }
+
   if (old_state != this->operation_state_) {
     this->handle_movement_transition_(old_state, this->operation_state_);
     this->notify_state_change_();
@@ -934,6 +939,15 @@ void NiceBidiWiFi::handle_command_(uint8_t command, uint8_t source) {
       this->last_command_source_text_sensor_->publish_state(source_name);
     } else {
       this->last_command_source_text_sensor_->publish_state(str_sprintf("Source 0x%02X", source));
+    }
+  }
+
+  // The photocell reverses the gate; a stop from anything else is a normal stop
+  if (this->last_stop_reason_text_sensor_ != nullptr) {
+    if (source == SRC_PHOTOCELL) {
+      this->last_stop_reason_text_sensor_->publish_state(t4_stop_reason_name(STOP_PHOTO_INTERVENTION));
+    } else if (command == MAN_STOP) {
+      this->last_stop_reason_text_sensor_->publish_state(t4_stop_reason_name(STOP_NORMAL));
     }
   }
 
