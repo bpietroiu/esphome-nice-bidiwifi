@@ -323,6 +323,7 @@ nice_bidiwifi:
   led2_green_pin: 26          # LED2 green (default: 26)
   led3_pin: 22                # LED3 (default: 22)
   swap_limit_switches: false  # Swap the open/close limit bits, as the ROA40 needs (default: false)
+  installer_mode: false       # Allow writes to the controller's settings (default: false)
 ```
 
 ## Apple HomeKit (optional)

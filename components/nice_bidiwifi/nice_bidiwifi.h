@@ -67,6 +67,8 @@ class NiceBidiWiFi : public Component {
   void set_limit_open_sensor(binary_sensor::BinarySensor *s) { this->limit_open_sensor_ = s; }
   void set_limit_close_sensor(binary_sensor::BinarySensor *s) { this->limit_close_sensor_ = s; }
   void set_swap_limit_switches(bool swap) { this->swap_limit_switches_ = swap; }
+  void set_installer_mode(bool on) { this->installer_mode_ = on; }
+  bool installer_mode() const { return this->installer_mode_; }
 
   // Command API
   void send_control_cmd(uint8_t cmd);
@@ -169,6 +171,7 @@ class NiceBidiWiFi : public Component {
   bool is_walky_{false};
   bool is_robus_{false};
   bool swap_limit_switches_{false};
+  bool installer_mode_{false};
   bool position_unsupported_{false};
 
   // Time-based position estimation
